@@ -5,9 +5,7 @@ This module loads environment variables and provides a cached settings object
 for use throughout the application.
 """
 
-import os
 from functools import lru_cache
-from typing import Optional
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -50,6 +48,26 @@ class Settings(BaseSettings):
         default="./prompts",
         description="Path to prompt template files"
     )
+    
+    # Lead Capture Configuration
+    resend_api_key: str = Field(
+        ...,
+        description="Resend API key for sending emails"
+    )
+    
+    admin_emails: str = Field(
+        ...,
+        description="Comma-separated list of admin emails for lead notifications"
+    )
+    
+    from_email: str = Field(
+        default="AutoStream Agent <onboarding@resend.dev>",
+        description="From email address for lead notifications"
+    )
+    
+    def get_admin_email_list(self) -> list[str]:
+        """Parse admin emails into a list."""
+        return [email.strip() for email in self.admin_emails.split(",") if email.strip()]
     
     model_config = SettingsConfigDict(
         env_file=".env",

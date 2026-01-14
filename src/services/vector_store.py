@@ -136,6 +136,17 @@ class VectorStoreManager:
             self.initialize_vector_store()
         return self._vector_store
     
+    def get_vector_store(self) -> Chroma:
+        """
+        Get the vector store instance, initializing if necessary.
+        
+        Returns:
+            ChromaDB vector store
+        """
+        if self._vector_store is None:
+            self.initialize_vector_store()
+        return self._vector_store
+    
     def similarity_search(
         self, 
         query: str, 

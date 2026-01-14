@@ -17,4 +17,5 @@ dependencies = [
     "pydantic-settings>=2.12.0",
     "python-dotenv>=1.2.1",
     "langchain-text-splitters>=1.1.0",
+    "resend>=2.19.0",
 ]

@@ -1,53 +1,40 @@
 # AutoStream AI Agent
 
-A conversational AI agent built with LangGraph and Chainlit for AutoStream - an AI-powered video editing SaaS platform. This agent demonstrates intent detection, RAG-powered knowledge retrieval, and intelligent lead capture capabilities.
+A conversational AI agent for AutoStream - an AI-powered video editing SaaS platform. This agent uses a simplified single-LLM architecture with RAG and tool calling for intelligent lead capture.
 
 ## 🎯 Project Overview
 
 This project implements a production-ready conversational AI agent that:
-- **Understands user intent** (greeting, inquiry, high-intent lead)
 - **Answers questions accurately** using RAG with ChromaDB vector storage
-- **Identifies and captures leads** when users show purchase intent
-- **Maintains conversation context** across 5-6 turns using LangGraph state management
+- **Identifies and captures leads** using LLM tool calling
+- **Sends real email notifications** to admins via Resend API
+- **Maintains conversation context** across multiple turns
 
-Built for the ServiceHive Inflx platform assignment, showcasing real-world GenAI agent capabilities beyond simple chatbots.
+Built for the ServiceHive Inflx platform assignment, showcasing a clean, maintainable GenAI agent architecture.
 
-## 🏗️ Architecture Explanation
+## 🏗️ Architecture
 
-### Why LangGraph?
+### Simplified Single-LLM Design
 
-LangGraph was chosen for this project because it provides:
+Instead of a complex multi-agent system, this project uses a **single LLM with RAG context and tool access**:
 
-1. **Explicit State Management**: Unlike simple chains, LangGraph maintains a typed state object (`AgentState`) that flows through the entire conversation, tracking intent, lead data, and conversation history. This ensures consistency and enables complex multi-turn interactions.
+1. **RAG Pipeline**: For every user query, we retrieve relevant documents from ChromaDB and pass them as context to the LLM
+2. **Tool Calling**: The LLM has access to a `lead_capture` tool that sends emails via Resend
+3. **Unified Prompt**: One system prompt handles all intents (greetings, questions, lead collection)
+4. **Smart Routing**: The LLM naturally handles different intents without separate agent nodes
 
-2. **Conditional Routing**: The agent needs to route conversations differently based on detected intent. LangGraph's conditional edges allow seamless transitions between greeting, RAG-based inquiry handling, and lead collection workflows without complex if-else logic.
+**Benefits:**
+- ✅ Simpler codebase
+- ✅ Easier to maintain
+- ✅ More natural conversations
+- ✅ Real email integration
+- ✅ Always-on RAG context
 
-3. **Modularity**: Each capability (intent detection, RAG retrieval, lead collection) is implemented as a separate node, making the system maintainable and testable. Nodes can be updated independently without affecting the entire workflow.
+See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed flow diagrams.
 
-4. **Debuggability**: LangGraph's graph structure makes it easy to visualize and debug the conversation flow, crucial for production deployments.
-
-### State Management
-
-The agent maintains state through a `TypedDict` called `AgentState` that includes:
-- **messages**: Full conversation history (last 12 messages for memory)
-- **current_intent**: Detected intent from the latest message
-- **lead_data**: Partially collected lead information (name, email, platform)
-- **lead_captured**: Boolean flag indicating successful lead capture
-- **retrieved_context**: RAG context for transparency
-
-State flows through these nodes:
-1. **Intent Detection** → Classifies user message
-2. **Greeting/RAG/Lead Collection** → Handles based on intent
-3. **Lead Capture** → Executes tool when data is complete
-
-The state persists across conversation turns in the Chainlit session, enabling the agent to remember context and continue lead collection across multiple messages.
-
-### Workflow Flow
+### Key Components
 
 ```
-User Message → Intent Detection → [Conditional Routing]
-                                   ├─ Greeting → Response
-                                   ├─ Inquiry → RAG Retrieval → Response
                                    └─ High Intent → Lead Collection → [Check Complete]
                                                                        ├─ Incomplete → Ask for Info
                                                                        └─ Complete → Lead Capture Tool
@@ -85,11 +72,13 @@ Copy the example environment file:
 cp .env.example .env
 ```
 
-Edit `.env` and add your OpenAI API key:
+Edit `.env` and add your API keys:
 ```env
 OPENAI_API_KEY=your_openai_api_key_here
 MODEL_NAME=gpt-4o-mini
 CHROMA_DB_PATH=./data/chroma_db
+RESEND_API_KEY=your_resend_api_key_here
+ADMIN_EMAILS=admin@example.com,team@example.com
 ```
 
 ## 🎮 Running the Application
@@ -281,30 +270,29 @@ uv run python -c "from src.config.settings import get_settings; print(get_settin
 # Test vector store initialization
 uv run python -c "from src.services.vector_store import VectorStoreManager; vm = VectorStoreManager(); vm.initialize_vector_store()"
 
-# Test intent detection
-uv run python -c "from src.agents.intent_detector import IntentDetector; id = IntentDetector(); print(id.detect_intent('I want to sign up'))"
+# Test lead capture
+uv run python -c "from src.tools.lead_capture import lead_capture; print(lead_capture('John Doe', 'john@example.com', 'YouTube'))"
 ```
 
 ## 🎨 Features
 
-- ✅ **Intent Classification**: Accurately detects greeting, inquiry, and high-intent lead
-- ✅ **RAG-Powered Answers**: Uses ChromaDB + OpenAI embeddings for accurate responses
-- ✅ **Smart Lead Capture**: Collects name, email, and platform conversationally
-- ✅ **State Management**: Maintains context across conversation turns
-- ✅ **Tool Execution**: Calls mock_lead_capture only when all data is collected
-- ✅ **Error Handling**: Graceful error handling with user-friendly messages
-- ✅ **Modular Design**: Clean OOP architecture with separation of concerns
+- ✅ **RAG-Powered Answers**: Uses ChromaDB + OpenAI embeddings for accurate responses  
+- ✅ **Smart Lead Capture**: LLM conversationally collects name, email, and platform  
+- ✅ **Real Email Notifications**: Sends emails to admins via Resend API  
+- ✅ **State Management**: Maintains context across conversation turns  
+- ✅ **Tool Calling**: LLM decides when to execute lead_capture tool  
+- ✅ **Error Handling**: Graceful error handling with user-friendly messages  
+- ✅ **Clean Architecture**: Simple, maintainable single-LLM design
 
 ## 📝 Assignment Requirements Met
 
-- ✅ Intent identification (greeting, inquiry, high-intent lead)
+- ✅ Intent identification (handled naturally by LLM)
 - ✅ RAG-powered knowledge retrieval with ChromaDB
-- ✅ Tool execution (mock_lead_capture) with proper validation
-- ✅ State management across 5-6 conversation turns
-- ✅ LangGraph workflow implementation
-- ✅ Clean code structure with proper documentation
-- ✅ README with architecture explanation
-- ✅ WhatsApp deployment approach documented
+- ✅ Real lead capture with email notifications (Resend)
+- ✅ State management across conversation turns
+- ✅ Clean, maintainable single-LLM architecture
+- ✅ Tool calling with LangChain
+- ✅ Comprehensive documentation
 
 ## 🤝 Contributing
 
@@ -316,4 +304,4 @@ This project is created for the ServiceHive assignment.
 
 ---
 
-**Built with ❤️ using LangGraph, Chainlit, and OpenAI**
+**Built with ❤️ using LangChain, Chainlit, and OpenAI**

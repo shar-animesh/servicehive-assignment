@@ -1,246 +1,111 @@
 """
-LangGraph workflow for the AutoStream AI agent.
+Simplified workflow for the AutoStream AI agent.
 
-Defines the state machine that routes conversations through different
-nodes based on intent and conversation state.
+Uses a single LLM call with RAG context and tool access instead of
+multiple agent nodes. The LLM handles all intents and lead capture.
 """
 
-from typing import Literal
+from typing import AsyncIterator
 
-from langchain_core.messages import AIMessage, HumanMessage
-from langgraph.graph import END, StateGraph
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from langchain_openai import ChatOpenAI
 
-from src.agents.intent_detector import IntentDetector
-from src.agents.lead_collector import LeadCollector
-from src.agents.rag_retriever import RAGRetriever
-from src.models.lead import LeadData
+from src.config.settings import get_settings
 from src.models.state import AgentState
-from src.tools.lead_capture import mock_lead_capture
+from src.services.vector_store import VectorStoreManager
+from src.tools.lead_capture import lead_capture_tool
+from src.utils.prompt_loader import PromptLoader
 
 
 class AutoStreamWorkflow:
     """
-    LangGraph workflow for the AutoStream agent.
+    Simplified workflow for the AutoStream agent.
     
-    Manages the conversation flow through different nodes based on
-    detected intent and conversation state.
+    Uses a single LLM with:
+    - RAG context retrieved for every query
+    - Access to lead_capture tool
+    - Unified system prompt
     """
     
     def __init__(self):
-        """Initialize the workflow with all agent components."""
-        self.intent_detector = IntentDetector()
-        self.rag_retriever = RAGRetriever()
-        self.lead_collector = LeadCollector()
+        """Initialize the workflow with LLM, RAG, and tools."""
+        settings = get_settings()
         
-        # Build the workflow graph
-        self.graph = self._build_graph()
-    
-    def _build_graph(self) -> StateGraph:
-        """
-        Build the LangGraph state machine.
+        # Load system prompt
+        self.prompt_loader = PromptLoader()
+        self.system_prompt = self.prompt_loader.load_prompt("system_prompt")
         
-        Returns:
-            Compiled state graph
-        """
-        # Create the graph
-        workflow = StateGraph(AgentState)
+        # Initialize vector store for RAG
+        self.vector_store_manager = VectorStoreManager()
+        self.vector_store = self.vector_store_manager.get_vector_store()
         
-        # Add nodes
-        workflow.add_node("intent_detection", self.intent_detection_node)
-        workflow.add_node("greeting", self.greeting_node)
-        workflow.add_node("rag_answer", self.rag_answer_node)
-        workflow.add_node("lead_collection", self.lead_collection_node)
-        workflow.add_node("lead_capture", self.lead_capture_node)
-        
-        # Set entry point
-        workflow.set_entry_point("intent_detection")
-        
-        # Add conditional edges from intent detection
-        workflow.add_conditional_edges(
-            "intent_detection",
-            self.route_by_intent,
-            {
-                "greeting": "greeting",
-                "inquiry": "rag_answer",
-                "high_intent_lead": "lead_collection"
-            }
+        # Initialize LLM with tool binding
+        self.llm = ChatOpenAI(
+            model=settings.model_name,
+            temperature=0.7,
+            streaming=True
         )
         
-        # Add edges from other nodes to END
-        workflow.add_edge("greeting", END)
-        workflow.add_edge("rag_answer", END)
-        
-        # Lead collection can either end or proceed to capture
-        workflow.add_conditional_edges(
-            "lead_collection",
-            self.check_lead_ready,
-            {
-                "capture": "lead_capture",
-                "continue": END
-            }
-        )
-        
-        workflow.add_edge("lead_capture", END)
-        
-        # Compile the graph
-        return workflow.compile()
+        # Bind the lead capture tool to the LLM
+        self.llm_with_tools = self.llm.bind_tools([lead_capture_tool])
     
-    def intent_detection_node(self, state: AgentState) -> AgentState:
+    def _retrieve_context(self, query: str, k: int = 3) -> str:
         """
-        Detect the intent of the user's message.
+        Retrieve relevant context from the knowledge base.
         
         Args:
-            state: Current agent state
+            query: User's query
+            k: Number of documents to retrieve
             
         Returns:
-            Updated state with detected intent
+            Formatted context string
         """
-        # Get the last user message
-        last_message = state["messages"][-1]
-        user_message = last_message.content if hasattr(last_message, 'content') else str(last_message)
+        # Retrieve relevant documents
+        docs = self.vector_store.similarity_search(query, k=k)
         
-        # Detect intent
-        intent = self.intent_detector.detect_intent(user_message)
+        if not docs:
+            return "No relevant information found in the knowledge base."
         
-        # Update state
-        state["current_intent"] = intent
+        # Format context
+        context_parts = []
+        for i, doc in enumerate(docs, 1):
+            context_parts.append(f"Document {i}:\n{doc.page_content}")
         
-        return state
+        return "\n\n".join(context_parts)
     
-    def greeting_node(self, state: AgentState) -> AgentState:
+    def _build_messages(self, user_message: str, conversation_history: list) -> list:
         """
-        Handle greeting messages.
+        Build the message list for the LLM.
         
         Args:
-            state: Current agent state
+            user_message: Current user message
+            conversation_history: Previous messages
             
         Returns:
-            Updated state with greeting response
+            List of messages including system prompt, history, and context
         """
-        greeting_response = (
-            "Hi there! 👋 Welcome to AutoStream! "
-            "I'm here to help you learn about our AI-powered video editing platform. "
-            "Whether you're creating content for YouTube, Instagram, TikTok, or other platforms, "
-            "we can help you save time and create amazing videos. "
-            "What would you like to know?"
-        )
+        # Retrieve RAG context for the current query
+        context = self._retrieve_context(user_message)
         
-        state["messages"].append(AIMessage(content=greeting_response))
+        # Build system message with context
+        system_content = f"""{self.system_prompt}
+
+## Knowledge Base Context
+The following information from our knowledge base is relevant to the current conversation:
+
+{context}
+
+Use this context to answer the user's questions accurately."""
         
-        return state
-    
-    def rag_answer_node(self, state: AgentState) -> AgentState:
-        """
-        Answer user questions using RAG.
+        messages = [SystemMessage(content=system_content)]
         
-        Args:
-            state: Current agent state
-            
-        Returns:
-            Updated state with RAG answer
-        """
-        # Get the last user message
-        last_message = state["messages"][-1]
-        user_question = last_message.content if hasattr(last_message, 'content') else str(last_message)
+        # Add conversation history
+        messages.extend(conversation_history)
         
-        # Get answer using RAG
-        answer, context = self.rag_retriever.answer_question(user_question)
+        # Add current user message
+        messages.append(HumanMessage(content=user_message))
         
-        # Update state
-        state["retrieved_context"] = context
-        state["messages"].append(AIMessage(content=answer))
-        
-        return state
-    
-    def lead_collection_node(self, state: AgentState) -> AgentState:
-        """
-        Collect lead information from the user.
-        
-        Args:
-            state: Current agent state
-            
-        Returns:
-            Updated state with lead collection message
-        """
-        # Get current lead data or initialize
-        if "lead_data" not in state or state["lead_data"] is None:
-            state["lead_data"] = LeadData()
-        
-        # Get the last user message
-        last_message = state["messages"][-1]
-        user_message = last_message.content if hasattr(last_message, 'content') else str(last_message)
-        
-        # Extract information from message
-        state["lead_data"] = self.lead_collector.extract_info_from_message(
-            user_message,
-            state["lead_data"]
-        )
-        
-        # Generate collection message
-        collection_message = self.lead_collector.generate_collection_message(
-            state["lead_data"]
-        )
-        
-        state["messages"].append(AIMessage(content=collection_message))
-        
-        return state
-    
-    def lead_capture_node(self, state: AgentState) -> AgentState:
-        """
-        Execute the lead capture tool.
-        
-        Args:
-            state: Current agent state
-            
-        Returns:
-            Updated state with capture confirmation
-        """
-        lead_data = state["lead_data"]
-        
-        # Call the mock lead capture function
-        result = mock_lead_capture(
-            name=lead_data.name,
-            email=lead_data.email,
-            platform=lead_data.platform
-        )
-        
-        # Update state
-        state["lead_captured"] = True
-        state["messages"].append(AIMessage(content=result))
-        
-        return state
-    
-    def route_by_intent(
-        self, 
-        state: AgentState
-    ) -> Literal["greeting", "inquiry", "high_intent_lead"]:
-        """
-        Route to appropriate node based on detected intent.
-        
-        Args:
-            state: Current agent state
-            
-        Returns:
-            Next node to execute
-        """
-        return state["current_intent"]
-    
-    def check_lead_ready(
-        self, 
-        state: AgentState
-    ) -> Literal["capture", "continue"]:
-        """
-        Check if lead data is complete and ready for capture.
-        
-        Args:
-            state: Current agent state
-            
-        Returns:
-            "capture" if ready, "continue" if more info needed
-        """
-        if self.lead_collector.is_ready_for_capture(state["lead_data"]):
-            return "capture"
-        return "continue"
+        return messages
     
     def run(self, user_message: str, state: AgentState = None) -> AgentState:
         """
@@ -258,21 +123,102 @@ class AutoStreamWorkflow:
             state = {
                 "messages": [],
                 "current_intent": None,
-                "lead_data": LeadData(),
+                "lead_data": None,
                 "lead_captured": False,
                 "conversation_history": [],
                 "retrieved_context": None,
                 "next_action": None
             }
         
+        # Build messages with RAG context
+        messages = self._build_messages(user_message, state["messages"])
+        
+        # Get LLM response with tool calling
+        response = self.llm_with_tools.invoke(messages)
+        
         # Add user message to state
         state["messages"].append(HumanMessage(content=user_message))
         
-        # Run the graph
-        result = self.graph.invoke(state)
+        # Check if tool was called
+        if response.tool_calls:
+            # Execute tool calls
+            for tool_call in response.tool_calls:
+                if tool_call["name"] == "lead_capture_tool":
+                    args = tool_call["args"]
+                    result = lead_capture_tool.invoke(args)
+                    state["lead_captured"] = True
+                    state["messages"].append(AIMessage(content=result))
+        else:
+            # Regular response without tool call
+            state["messages"].append(AIMessage(content=response.content))
         
-        # Update conversation history (keep last 6 messages)
-        if len(result["messages"]) > 12:  # 6 turns = 12 messages
-            result["messages"] = result["messages"][-12:]
+        # Keep conversation history manageable (last 12 messages = 6 turns)
+        if len(state["messages"]) > 12:
+            state["messages"] = state["messages"][-12:]
         
-        return result
+        return state
+    
+    async def run_stream(self, user_message: str, state: AgentState = None) -> AsyncIterator[dict]:
+        """
+        Run the workflow with streaming support.
+        
+        Args:
+            user_message: User's input message
+            state: Optional existing state (for conversation continuity)
+            
+        Yields:
+            Chunks of content as they're generated
+        """
+        # Initialize state if not provided
+        if state is None:
+            state = {
+                "messages": [],
+                "current_intent": None,
+                "lead_data": None,
+                "lead_captured": False,
+                "conversation_history": [],
+                "retrieved_context": None,
+                "next_action": None
+            }
+        
+        # Build messages with RAG context
+        messages = self._build_messages(user_message, state["messages"])
+        
+        # Add user message to state
+        state["messages"].append(HumanMessage(content=user_message))
+        
+        # Stream LLM response
+        full_response = ""
+        tool_calls = []
+        
+        async for chunk in self.llm_with_tools.astream(messages):
+            # Handle content chunks
+            if chunk.content:
+                full_response += chunk.content
+                yield {"content": chunk.content}
+            
+            # Collect tool calls
+            if hasattr(chunk, "tool_calls") and chunk.tool_calls:
+                tool_calls.extend(chunk.tool_calls)
+        
+        # Execute any tool calls after streaming completes
+        if tool_calls:
+            for tool_call in tool_calls:
+                if tool_call["name"] == "lead_capture_tool":
+                    args = tool_call["args"]
+                    result = lead_capture_tool.invoke(args)
+                    state["lead_captured"] = True
+                    # Yield the tool result
+                    yield {"content": f"\n\n{result}"}
+                    state["messages"].append(AIMessage(content=result))
+        else:
+            # Add the full response to state
+            if full_response:
+                state["messages"].append(AIMessage(content=full_response))
+        
+        # Keep conversation history manageable
+        if len(state["messages"]) > 12:
+            state["messages"] = state["messages"][-12:]
+        
+        # Yield final state
+        yield {"state": state}
