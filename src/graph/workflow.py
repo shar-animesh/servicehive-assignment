@@ -49,6 +49,34 @@ class AutoStreamWorkflow:
         # Bind the lead capture tool to the LLM
         self.llm_with_tools = self.llm.bind_tools([lead_capture_tool])
     
+    def _handle_validation_error(self, error: str, args: dict) -> str:
+        """
+        Generate user-friendly error message for validation failures.
+        
+        Args:
+            error: The error message from the exception
+            args: The arguments that failed validation
+            
+        Returns:
+            User-friendly error message asking for correction
+        """
+        if "email" in error.lower():
+            return (
+                f"I noticed there might be an issue with the email address '{args.get('email')}'. "
+                "Could you please provide a valid email address?"
+            )
+        elif "name" in error.lower():
+            return (
+                "The name seems to be too short. Could you please provide your full name? "
+                "(It should be at least 2 characters)"
+            )
+        else:
+            return (
+                "I noticed there might be an issue with the information provided. "
+                "Could you please double-check and provide the correct details? "
+                "I need your full name, valid email address, and content creation platform."
+            )
+    
     def _retrieve_context(self, query: str, k: int = 3) -> str:
         """
         Retrieve relevant context from the knowledge base.
@@ -147,9 +175,14 @@ Use this context to answer the user's questions accurately."""
                     args = tool_call.get("args", {})
                     # Validate args before invoking
                     if args and "name" in args and "email" in args and "platform" in args:
-                        result = lead_capture_tool.invoke(args)
-                        state["lead_captured"] = True
-                        state["messages"].append(AIMessage(content=result))
+                        try:
+                            result = lead_capture_tool.invoke(args)
+                            state["lead_captured"] = True
+                            state["messages"].append(AIMessage(content=result))
+                        except Exception as e:  # noqa: BLE001
+                            # Validation error - ask user to provide correct information
+                            error_msg = self._handle_validation_error(str(e), args)
+                            state["messages"].append(AIMessage(content=error_msg))
                     else:
                         # Tool was called but args are incomplete - add AI response instead
                         if response.content:
@@ -218,16 +251,26 @@ Use this context to answer the user's questions accurately."""
                     args = tool_call.get("args", {})
                     # Validate args before invoking
                     if args and "name" in args and "email" in args and "platform" in args:
-                        result = lead_capture_tool.invoke(args)
-                        state["lead_captured"] = True
-                        tool_executed = True
-                        # Yield the tool result
-                        yield {"content": f"\n\n{result}"}
-                        # Add both the response and tool result to messages
-                        if full_response:
-                            state["messages"].append(AIMessage(content=f"{full_response}\n\n{result}"))
-                        else:
-                            state["messages"].append(AIMessage(content=result))
+                        try:
+                            result = lead_capture_tool.invoke(args)
+                            state["lead_captured"] = True
+                            tool_executed = True
+                            # Yield the tool result
+                            yield {"content": f"\n\n{result}"}
+                            # Add both the response and tool result to messages
+                            if full_response:
+                                state["messages"].append(AIMessage(content=f"{full_response}\n\n{result}"))
+                            else:
+                                state["messages"].append(AIMessage(content=result))
+                        except Exception as e:  # noqa: BLE001
+                            # Validation error - ask user to provide correct information
+                            error_msg = self._handle_validation_error(str(e), args)
+                            tool_executed = True
+                            yield {"content": f"\n\n{error_msg}"}
+                            if full_response:
+                                state["messages"].append(AIMessage(content=f"{full_response}\n\n{error_msg}"))
+                            else:
+                                state["messages"].append(AIMessage(content=error_msg))
         
         # If no tool was executed, add the full response to state
         if not tool_executed and full_response:
