@@ -143,11 +143,17 @@ Use this context to answer the user's questions accurately."""
         if response.tool_calls:
             # Execute tool calls
             for tool_call in response.tool_calls:
-                if tool_call["name"] == "lead_capture_tool":
-                    args = tool_call["args"]
-                    result = lead_capture_tool.invoke(args)
-                    state["lead_captured"] = True
-                    state["messages"].append(AIMessage(content=result))
+                if tool_call.get("name") == "lead_capture_tool":
+                    args = tool_call.get("args", {})
+                    # Validate args before invoking
+                    if args and "name" in args and "email" in args and "platform" in args:
+                        result = lead_capture_tool.invoke(args)
+                        state["lead_captured"] = True
+                        state["messages"].append(AIMessage(content=result))
+                    else:
+                        # Tool was called but args are incomplete - add AI response instead
+                        if response.content:
+                            state["messages"].append(AIMessage(content=response.content))
         else:
             # Regular response without tool call
             state["messages"].append(AIMessage(content=response.content))
@@ -189,7 +195,7 @@ Use this context to answer the user's questions accurately."""
         
         # Stream LLM response
         full_response = ""
-        tool_calls = []
+        tool_calls_collected = []
         
         async for chunk in self.llm_with_tools.astream(messages):
             # Handle content chunks
@@ -197,24 +203,35 @@ Use this context to answer the user's questions accurately."""
                 full_response += chunk.content
                 yield {"content": chunk.content}
             
-            # Collect tool calls
+            # Collect tool calls - they come as complete objects in streaming
             if hasattr(chunk, "tool_calls") and chunk.tool_calls:
-                tool_calls.extend(chunk.tool_calls)
+                for tc in chunk.tool_calls:
+                    # Only add if it's a complete tool call (has all required fields)
+                    if tc.get("args") and tc.get("name"):
+                        tool_calls_collected.append(tc)
         
         # Execute any tool calls after streaming completes
-        if tool_calls:
-            for tool_call in tool_calls:
-                if tool_call["name"] == "lead_capture_tool":
-                    args = tool_call["args"]
-                    result = lead_capture_tool.invoke(args)
-                    state["lead_captured"] = True
-                    # Yield the tool result
-                    yield {"content": f"\n\n{result}"}
-                    state["messages"].append(AIMessage(content=result))
-        else:
-            # Add the full response to state
-            if full_response:
-                state["messages"].append(AIMessage(content=full_response))
+        tool_executed = False
+        if tool_calls_collected:
+            for tool_call in tool_calls_collected:
+                if tool_call.get("name") == "lead_capture_tool":
+                    args = tool_call.get("args", {})
+                    # Validate args before invoking
+                    if args and "name" in args and "email" in args and "platform" in args:
+                        result = lead_capture_tool.invoke(args)
+                        state["lead_captured"] = True
+                        tool_executed = True
+                        # Yield the tool result
+                        yield {"content": f"\n\n{result}"}
+                        # Add both the response and tool result to messages
+                        if full_response:
+                            state["messages"].append(AIMessage(content=f"{full_response}\n\n{result}"))
+                        else:
+                            state["messages"].append(AIMessage(content=result))
+        
+        # If no tool was executed, add the full response to state
+        if not tool_executed and full_response:
+            state["messages"].append(AIMessage(content=full_response))
         
         # Keep conversation history manageable
         if len(state["messages"]) > 12:
