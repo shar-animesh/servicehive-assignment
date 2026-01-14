@@ -1,307 +1,269 @@
 # AutoStream AI Agent
 
-A conversational AI agent for AutoStream - an AI-powered video editing SaaS platform. This agent uses a simplified single-LLM architecture with RAG and tool calling for intelligent lead capture.
+> **Simple RAG-powered conversational AI with tool calling for lead capture**
+> 
+> Built for ServiceHive's Inflx platform assignment
 
-## 🎯 Project Overview
+## 🎯 Overview
 
-This project implements a production-ready conversational AI agent that:
-- **Answers questions accurately** using RAG with ChromaDB vector storage
-- **Identifies and captures leads** using LLM tool calling
-- **Sends real email notifications** to admins via Resend API
-- **Maintains conversation context** across multiple turns
+AI agent for **AutoStream** - an AI-powered video editing SaaS for content creators.
 
-Built for the ServiceHive Inflx platform assignment, showcasing a clean, maintainable GenAI agent architecture.
+**Simple Architecture**:
+1. User query → Embed & retrieve from ChromaDB  
+2. Pass context + system prompt to LLM
+3. LLM responds naturally OR calls `lead_capture` tool
+4. Show response to user
 
-## 🏗️ Architecture
+**No complex intent classification** - the LLM handles everything with one system prompt!
 
-### Simplified Single-LLM Design
+### Features
 
-Instead of a complex multi-agent system, this project uses a **single LLM with RAG context and tool access**:
+✅ RAG-powered Q&A using ChromaDB  
+✅ Natural conversation flow  
+✅ Automatic lead capture with email notifications  
+✅ Clean, maintainable ~150 line implementation
 
-1. **RAG Pipeline**: For every user query, we retrieve relevant documents from ChromaDB and pass them as context to the LLM
-2. **Tool Calling**: The LLM has access to a `lead_capture` tool that sends emails via Resend
-3. **Unified Prompt**: One system prompt handles all intents (greetings, questions, lead collection)
-4. **Smart Routing**: The LLM naturally handles different intents without separate agent nodes
+## 🚀 Quick Start
 
-**Benefits:**
-- ✅ Simpler codebase
-- ✅ Easier to maintain
-- ✅ More natural conversations
-- ✅ Real email integration
-- ✅ Always-on RAG context
+### 1. Install
 
-See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed flow diagrams.
-
-### Key Components
-
-```
-                                   └─ High Intent → Lead Collection → [Check Complete]
-                                                                       ├─ Incomplete → Ask for Info
-                                                                       └─ Complete → Lead Capture Tool
-```
-
-## 📋 Prerequisites
-
-- Python 3.9 or higher
-- UV package manager ([install here](https://github.com/astral-sh/uv))
-- OpenAI API key
-
-## 🚀 Installation
-
-1. **Clone or navigate to the project directory:**
 ```bash
 cd servicehive-assignment
-```
-
-2. **Install dependencies using UV:**
-```bash
 uv sync
 ```
 
-This will install all required packages including:
-- LangChain & LangGraph
-- Chainlit
-- ChromaDB
-- OpenAI
-- Pydantic
+### 2. Configure
 
-3. **Set up environment variables:**
-
-Copy the example environment file:
 ```bash
 cp .env.example .env
+# Edit .env and add: OPENAI_API_KEY=sk-your-key-here
 ```
 
-Edit `.env` and add your API keys:
-```env
-OPENAI_API_KEY=your_openai_api_key_here
-MODEL_NAME=gpt-4o-mini
-CHROMA_DB_PATH=./data/chroma_db
-RESEND_API_KEY=your_resend_api_key_here
-ADMIN_EMAILS=admin@example.com,team@example.com
+### 3. Test
+
+```bash
+uv run python test_setup.py
 ```
 
-## 🎮 Running the Application
-
-Start the Chainlit web interface:
+### 4. Run
 
 ```bash
 uv run chainlit run src/app.py
 ```
 
-The application will:
-1. Initialize the vector store (first run will index the knowledge base)
-2. Start the Chainlit server
-3. Open your browser to `http://localhost:8000`
+Visit: **http://localhost:8000**
 
-## 💬 Testing the Agent
+## 💬 Example Conversations
 
-Try this conversation flow to see all features:
-
-1. **Greeting:**
-   ```
-   User: Hi there!
-   Agent: [Welcomes and offers help]
-   ```
-
-2. **Product Inquiry (RAG):**
-   ```
-   User: What are your pricing plans?
-   Agent: [Retrieves and explains Basic $29 and Pro $79 plans]
-   ```
-
-3. **High-Intent Lead:**
-   ```
-   User: That sounds good, I want to try the Pro plan for my YouTube channel
-   Agent: [Detects high intent, starts collecting info]
-   ```
-
-4. **Lead Collection:**
-   ```
-   Agent: Great! What's your name?
-   User: John Doe
-   Agent: And what's your email address?
-   User: john@example.com
-   Agent: [Confirms and captures lead]
-   ```
-
-The `mock_lead_capture` function will print to console:
+**Greeting:**
 ```
-Lead captured successfully: John Doe, john@example.com, YouTube
+You: Hi!
+Agent: Hi! 👋 Welcome to AutoStream! I'm here to help you learn about our 
+      AI-powered video editing platform...
 ```
 
-## 📁 Project Structure
+**Pricing Question:**
+```
+You: How much does it cost?
+Agent: [Retrieves from ChromaDB and explains Basic $29/mo and Pro $79/mo plans]
+```
+
+**Lead Capture:**
+```
+You: I want to sign up!
+Agent: Awesome! To get you started, what's your name?
+You: Sarah
+Agent: Great! And your email?
+You: sarah@example.com
+Agent: Perfect! Which platform do you create content for?
+You: YouTube
+Agent: [Calls lead_capture tool] Thank you, Sarah! 🎉 Our team will reach out shortly!
+
+[Email sent to admins automatically]
+```
+
+## 🏗️ Architecture
+
+### Tech Stack
+
+- **UI**: ChainLit
+- **LLM**: OpenAI GPT-4o-mini (via LangChain)
+- **Vector DB**: ChromaDB
+- **Embeddings**: text-embedding-3-small
+- **Models**: Pydantic
+- **Templates**: Jinja2
+
+### Project Structure
 
 ```
 servicehive-assignment/
 ├── src/
-│   ├── config/
-│   │   └── settings.py              # Pydantic settings with LRU cache
-│   ├── models/
-│   │   ├── state.py                 # LangGraph state schema
-│   │   └── lead.py                  # Lead data models
-│   ├── agents/
-│   │   ├── intent_detector.py       # Intent classification
-│   │   ├── rag_retriever.py         # RAG pipeline
-│   │   └── lead_collector.py        # Lead collection logic
-│   ├── graph/
-│   │   └── workflow.py              # LangGraph workflow
-│   ├── tools/
-│   │   └── lead_capture.py          # Mock lead capture tool
-│   ├── services/
-│   │   ├── vector_store.py          # ChromaDB integration
-│   │   └── embeddings.py            # OpenAI embeddings
-│   ├── utils/
-│   │   └── prompt_loader.py         # Jinja2 prompt templates
-│   └── app.py                       # Chainlit application
+│   ├── app.py              # Main application (~150 lines)
+│   ├── models.py           # Pydantic models
+│   ├── config/settings.py  # Environment config
+│   ├── services/           # Embeddings & vector store
+│   ├── tools/              # Lead capture tool
+│   └── utils/              # Prompt loader (Jinja2)
 ├── prompts/
-│   ├── system_prompt.md             # Agent personality
-│   ├── intent_classifier.md         # Intent detection
-│   ├── rag_prompt.md                # RAG answer generation
-│   └── lead_capture_prompt.md       # Lead collection
-├── knowledge_base/
-│   ├── pricing_features.md          # AutoStream pricing
-│   ├── policies.md                  # Company policies
-│   └── faq.md                       # FAQs
-├── data/
-│   └── chroma_db/                   # Vector database (auto-created)
-├── pyproject.toml                   # UV dependencies
-├── .env.example                     # Environment template
-└── README.md                        # This file
+│   └── system_prompt.md    # Single system prompt
+├── knowledge_base/          # RAG data
+│   ├── pricing_features.md
+│   ├── policies.md
+│   └── faq.md
+└── data/chroma_db/         # Vector DB (auto-created)
 ```
+
+### How It Works
+
+```
+User: "What are your plans?"
+         ↓
+Embed query using OpenAI
+         ↓
+Retrieve top-4 chunks from ChromaDB
+         ↓
+Build messages:
+  - SystemMessage(system_prompt)
+  - ConversationHistory
+  - HumanMessage(query + context)
+         ↓
+LLM.invoke() with lead_capture tool bound
+         ↓
+LLM decides:
+  - Regular response, OR
+  - Call lead_capture(name, email, platform)
+         ↓
+Show response + tool result to user
+```
+
+## 📋 Assignment Requirements
+
+### ✅ All Requirements Met
+
+**3.1 Intent Identification**
+- ✅ Handles greetings, product questions, pricing, high-intent leads
+- ✅ No hardcoded intent classification - LLM does it naturally
+
+**3.2 RAG-Powered Knowledge Retrieval**
+- ✅ ChromaDB vector store
+- ✅ OpenAI embeddings
+- ✅ AutoStream pricing & features in knowledge base
+- ✅ Company policies (refunds, support)
+
+**3.3 Lead Capture**
+- ✅ Identifies high-intent users naturally
+- ✅ Collects name, email, platform conversationally
+- ✅ Calls tool when ready
+- ✅ Sends email to admins via Resend API
+
+### Implementation Highlights
+
+- **Single system prompt** - No separate prompts for intent classification
+- **No hardcoded logic** - LLM decides when to capture leads
+- **Clean codebase** - Main app is ~150 lines
+- **Uses existing infrastructure** - Prompt loader, settings, vector store services
+- **Tool calling** - LLM naturally invokes lead_capture when appropriate
 
 ## 🔧 Configuration
 
-All configuration is managed through environment variables in `.env`:
+Environment variables (`.env`):
 
-- `OPENAI_API_KEY`: Your OpenAI API key (required)
-- `MODEL_NAME`: LLM model to use (default: gpt-4o-mini)
-- `CHROMA_DB_PATH`: Path for vector database storage
-
-Settings are loaded using Pydantic Settings with `@lru_cache` for performance.
-
-## 📱 WhatsApp Deployment
-
-### Integration Approach
-
-To deploy this agent on WhatsApp, you would use the **WhatsApp Business API** with webhooks:
-
-#### Architecture
-
-```
-WhatsApp User → WhatsApp Business API → Webhook Server → AutoStream Agent → Response
-```
-
-#### Implementation Steps
-
-1. **Set up WhatsApp Business API**
-   - Register with Meta/Facebook Business
-   - Get WhatsApp Business API credentials
-   - Configure webhook URL
-
-2. **Create Webhook Server**
-   ```python
-   from fastapi import FastAPI, Request
-   from src.graph.workflow import AutoStreamWorkflow
-   
-   app = FastAPI()
-   workflow = AutoStreamWorkflow()
-   
-   # Store user sessions (use Redis in production)
-   sessions = {}
-   
-   @app.post("/webhook")
-   async def whatsapp_webhook(request: Request):
-       data = await request.json()
-       
-       # Extract message and user ID
-       user_id = data['entry'][0]['changes'][0]['value']['contacts'][0]['wa_id']
-       message = data['entry'][0]['changes'][0]['value']['messages'][0]['text']['body']
-       
-       # Get or create session state
-       if user_id not in sessions:
-           sessions[user_id] = initialize_state()
-       
-       # Run workflow
-       result = workflow.run(message, sessions[user_id])
-       sessions[user_id] = result
-       
-       # Get response
-       response = result['messages'][-1].content
-       
-       # Send back via WhatsApp API
-       send_whatsapp_message(user_id, response)
-       
-       return {"status": "ok"}
-   ```
-
-3. **State Persistence**
-   - Use **Redis** or **DynamoDB** to store user sessions
-   - Implement session expiry (e.g., 24 hours)
-   - Store lead data in database when captured
-
-4. **Handle WhatsApp-Specific Features**
-   - Format messages for WhatsApp (max 4096 chars)
-   - Support quick reply buttons for lead collection
-   - Handle media messages (ignore or process)
-
-5. **Deployment**
-   - Deploy webhook server on AWS Lambda, Google Cloud Run, or similar
-   - Use HTTPS (required by WhatsApp)
-   - Implement rate limiting and error handling
-   - Set up monitoring and logging
-
-#### Key Considerations
-
-- **Session Management**: WhatsApp conversations are asynchronous, so robust session storage is critical
-- **Message Formatting**: WhatsApp has character limits and formatting constraints
-- **Verification**: WhatsApp requires webhook verification on setup
-- **Scalability**: Use serverless or containerized deployment for handling multiple concurrent users
-- **Security**: Validate webhook signatures to prevent unauthorized access
+| Variable | Description | Required |
+|----------|-------------|----------|
+| `OPENAI_API_KEY` | OpenAI API key | ✅ Yes |
+| `MODEL_NAME` | LLM model | No (default: gpt-4o-mini) |
+| `CHROMA_DB_PATH` | Vector DB path | No (default: ./data/chroma_db) |
+| `KNOWLEDGE_BASE_PATH` | KB directory | No (default: ./knowledge_base) |
+| `RESEND_API_KEY` | For email notifications | No |
+| `ADMIN_EMAILS` | Email recipients | No |
 
 ## 🧪 Testing
 
-Test individual components:
-
+Run setup verification:
 ```bash
-# Test settings loading
-uv run python -c "from src.config.settings import get_settings; print(get_settings())"
-
-# Test vector store initialization
-uv run python -c "from src.services.vector_store import VectorStoreManager; vm = VectorStoreManager(); vm.initialize_vector_store()"
-
-# Test lead capture
-uv run python -c "from src.tools.lead_capture import lead_capture; print(lead_capture('John Doe', 'john@example.com', 'YouTube'))"
+uv run python test_setup.py
 ```
 
-## 🎨 Features
+Tests:
+- ✅ Imports
+- ✅ Settings loading
+- ✅ Prompt loader (Jinja2)
+- ✅ Vector store initialization
+- ✅ LLM connection
+- ✅ Tool binding
 
-- ✅ **RAG-Powered Answers**: Uses ChromaDB + OpenAI embeddings for accurate responses  
-- ✅ **Smart Lead Capture**: LLM conversationally collects name, email, and platform  
-- ✅ **Real Email Notifications**: Sends emails to admins via Resend API  
-- ✅ **State Management**: Maintains context across conversation turns  
-- ✅ **Tool Calling**: LLM decides when to execute lead_capture tool  
-- ✅ **Error Handling**: Graceful error handling with user-friendly messages  
-- ✅ **Clean Architecture**: Simple, maintainable single-LLM design
+## 📚 Knowledge Base
 
-## 📝 Assignment Requirements Met
+Three markdown files in `knowledge_base/`:
 
-- ✅ Intent identification (handled naturally by LLM)
-- ✅ RAG-powered knowledge retrieval with ChromaDB
-- ✅ Real lead capture with email notifications (Resend)
-- ✅ State management across conversation turns
-- ✅ Clean, maintainable single-LLM architecture
-- ✅ Tool calling with LangChain
-- ✅ Comprehensive documentation
+1. **pricing_features.md**
+   - Basic Plan: $29/mo, 10 videos, 720p
+   - Pro Plan: $79/mo, unlimited, 4K, AI captions
 
-## 🤝 Contributing
+2. **policies.md**
+   - 7-day refund policy
+   - 24/7 support on Pro plan only
 
-This is an assignment project, but suggestions for improvements are welcome!
+3. **faq.md**
+   - Product capabilities
+   - Technical specs
+   - Billing info
 
-## 📄 License
+## 🛠️ Development
 
-This project is created for the ServiceHive assignment.
+### Key Files
+
+**[src/app.py](src/app.py)** - Main application
+- Simple RAG flow
+- Tool calling integration
+- ChainLit UI handlers
+
+**[prompts/system_prompt.md](prompts/system_prompt.md)** - System prompt
+- Loaded via Jinja2 (not hardcoded!)
+- Handles all conversation scenarios
+- Instructs LLM on tool usage
+
+**[src/tools/lead_capture.py](src/tools/lead_capture.py)** - Lead capture
+- Sends emails via Resend API
+- LangChain tool decorator
+- Returns confirmation message
+
+### Why This Design?
+
+✅ **Simple**: One prompt, one flow, ~150 lines  
+✅ **Maintainable**: No hardcoded prompts in code  
+✅ **Natural**: LLM handles intent organically  
+✅ **Extensible**: Easy to add more tools  
+✅ **Production-ready**: Uses existing services properly
+
+## 🚀 Deployment
+
+For production:
+- Use persistent session storage (Redis)
+- Add rate limiting
+- Use production vector DB (Pinecone, Weaviate)
+- Set up monitoring
+- Add authentication
+- Configure proper logging
+
+## 📝 Notes
+
+- First run indexes knowledge base (~10 seconds)
+- Conversation history kept in session (last 10 messages)
+- Tool calls include text response for UI
+- All settings from `.env` (no hardcoded values)
+
+## 🎓 Built With
+
+- Python 3.12
+- ChainLit - UI
+- LangChain - LLM framework
+- OpenAI - LLM & embeddings
+- ChromaDB - Vector database
+- Pydantic - Data validation
+- Jinja2 - Template loading
+- Resend - Email API
 
 ---
 
-**Built with ❤️ using LangChain, Chainlit, and OpenAI**
+**ServiceHive Inflx Platform Assignment - Machine Learning Intern**

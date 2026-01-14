@@ -51,18 +51,24 @@ class Settings(BaseSettings):
     
     # Lead Capture Configuration
     resend_api_key: str = Field(
-        ...,
+        default="",
         description="Resend API key for sending emails"
     )
     
     admin_emails: str = Field(
-        ...,
+        default="admin@example.com",
         description="Comma-separated list of admin emails for lead notifications"
     )
     
     from_email: str = Field(
         default="AutoStream Agent <onboarding@resend.dev>",
         description="From email address for lead notifications"
+    )
+    
+    # Debug Configuration
+    debug: bool = Field(
+        default=False,
+        description="Enable debug mode with additional logging"
     )
     
     def get_admin_email_list(self) -> list[str]:
