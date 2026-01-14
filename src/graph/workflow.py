@@ -33,7 +33,7 @@ class AutoStreamWorkflow:
         
         # Load system prompt
         self.prompt_loader = PromptLoader()
-        self.system_prompt = self.prompt_loader.load_prompt("system_prompt")
+        self.system_prompt = self.prompt_loader.load_prompt("system_prompt.md")
         
         # Initialize vector store for RAG
         self.vector_store_manager = VectorStoreManager()
