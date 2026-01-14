@@ -4,6 +4,14 @@ AutoStream AI Agent - Chainlit Application.
 Main entry point for the Chainlit web interface.
 """
 
+import os
+import sys
+
+# Ensure project root is on sys.path so 'src' package imports work
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+
 import chainlit as cl
 from langchain_core.messages import AIMessage, HumanMessage
 
